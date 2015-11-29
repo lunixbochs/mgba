@@ -68,7 +68,19 @@ static inline enum RegisterBank _ARMSelectBank(enum PrivilegeMode mode) {
 	}
 }
 
+static uint16_t _armTruncTable[0x1000] = {0};
+static uint16_t _thumbTruncTable[0x400] = {0};
+
 void ARMInit(struct ARMCore* cpu) {
+	uintptr_t first = (uintptr_t)_armTable[0];
+	for (int i = 0; i < 0x1000; i++) {
+		_armTruncTable[i] = ((uintptr_t)_armTable[i] - first) >> 2;
+	}
+	first = (uintptr_t)_thumbTable[0];
+	for (int i = 0; i < 0x400; i++) {
+		_thumbTruncTable[i] = ((uintptr_t)_thumbTable[i] - first) >> 2;
+	}
+
 	cpu->master->init(cpu, cpu->master);
 	size_t i;
 	for (i = 0; i < cpu->numComponents; ++i) {
@@ -269,7 +281,9 @@ static inline void ARMStep(struct ARMCore* cpu) {
 			return;
 		}
 	}
-	ARMInstruction instruction = _armTable[((opcode >> 16) & 0xFF0) | ((opcode >> 4) & 0x00F)];
+	// reconstitute pointer
+	int idx = ((opcode >> 16) & 0xFF0) | ((opcode >> 4) & 0x00F);
+	ARMInstruction instruction = (ARMInstruction)((uintptr_t)_armTable[0] + (_armTruncTable[idx] << 2));
 	instruction(cpu, opcode);
 }
 
@@ -278,7 +292,10 @@ static inline void ThumbStep(struct ARMCore* cpu) {
 	cpu->prefetch[0] = cpu->prefetch[1];
 	cpu->gprs[ARM_PC] += WORD_SIZE_THUMB;
 	LOAD_16(cpu->prefetch[1], cpu->gprs[ARM_PC] & cpu->memory.activeMask, cpu->memory.activeRegion);
-	ThumbInstruction instruction = _thumbTable[opcode >> 6];
+
+	// reconstitute pointer
+	int idx = opcode >> 6;
+	ThumbInstruction instruction = (ThumbInstruction)((uintptr_t)_thumbTable[0] + (_thumbTruncTable[idx] << 2));
 	instruction(cpu, opcode);
 }
 
